@@ -11,7 +11,7 @@
         {"IP":"","server":"","local":""}
     ],
     "command":[
-        {"name":"d",         "execute":"start explorer {file}"},
+        {"name":"d",         "execute":"start {file}"},
         {"name":"f",         "execute":"start notepad++ {file}"},
         {"name":"vs",        "execute":"\"C:/Program Files/Microsoft VS Code/bin/code.cmd\" {file}"},
         {"name":"services",  "execute":["adb remount",
