@@ -12,6 +12,7 @@ alias vi=vim
 alias rgu="rg -uu"
 alias tat="tmux attach -t"
 
+# 由python server.py -c ServerInstall 生成拷贝到这里
 alias d='/home/quwj/work/worktools/fastopen/open.sh d '
 alias f='/home/quwj/work/worktools/fastopen/open.sh f '
 alias vs='/home/quwj/work/worktools/fastopen/open.sh vs '
@@ -24,6 +25,7 @@ alias selinux11='/home/quwj/work/worktools/fastopen/open.sh selinux11 '
 alias apush='/home/quwj/work/worktools/fastopen/open.sh apush '
 alias areboot='/home/quwj/work/worktools/fastopen/open.sh areboot '
 alias adb='/home/quwj/work/worktools/fastopen/open.sh adb '
+
 alias meminfo='free -m -l -t'
 ## get top process eating memory
 alias psmem='ps auxf | sort -nr -k 4'

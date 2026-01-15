@@ -1,110 +1,87 @@
-#!/usr/bin/env python3
-#coding=utf-8
-
-import time
 import os
 import json
 import sys
-import getopt
 import argparse
-from parseConfig import *
-from mqtt_connect import *
-import test
+from parseConfig import parseConfig
+from mqtt_connect import mqtt_connect
 import adbcommend
 
 
 def server_install():
+    """
+    生成 'open.sh' 脚本并打印 alias 命令。
+    此脚本用于辅助在 Linux shell 中执行 FastOpen 命令。
+    """
     config = parseConfig()
     config.parse_cmd_config()
-    shell_name = os.getcwd()+'/'+'open.sh'
-    run_name = os.getcwd()+'/'+__file__
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    shell_name = os.path.join(current_dir, 'open.sh')
+    run_name = os.path.abspath(__file__)
     alias = ''
-    with open(shell_name,'w') as f:
+
+    # 写入 open.sh 脚本
+    with open(shell_name, 'w') as f:
         f.writelines('#!/bin/bash\n')
-        f.writelines('FILE=$(pwd)/$2\n')
-        '''index = 0
-        while True:
-            commend = config.get_first_cmd_from_index(index)
-            index = index +1
-            if commend == None:
-                break
-            local = config.get_local_cmd(commend)
-            if local == None:
-                break
+        f.writelines('FILE=$2\n')  # 直接传递路径；由 Python 脚本内部处理绝对/相对路径逻辑
 
-            file = ''
-            param = ''
-            flag = '$2'
-            if local.find('{file}') != -1:
-                file = '-f $FILE '
-                flag = ''
-            if local.find('{param}') != -1:
-                param = f'-p {flag} $3 $4 $5 $6'
-                
-            f.writelines(f'if [ {commend} = $1 ];then\n')
-            f.writelines(f'    python3 {run_name} -c {commend} {file} {param} \n')    
+        commands = config.get_cmd_name_all()
+        for cmd in commands:
+            execute = config.get_cmd_execute(cmd)
+            if not execute:
+                continue
+
+            file_flag = ''
+            param_flag = ''
+            base_flag = '$2'
+
+            execute_items = execute if isinstance(execute, list) else [execute]
+            has_file = any('{file}' in item for item in execute_items)
+            has_param = any('{param}' in item for item in execute_items)
+
+            if has_file:
+                file_flag = '-f "$FILE" '
+                base_flag = ''
+            if has_param:
+                param_flag = f'-p {base_flag} "$3" "$4" "$5" "$6"'
+
+            f.writelines(f'if [ "$1" = "{cmd}" ]; then\n')
+            f.writelines(f'    python3 {run_name} -c {cmd} {file_flag} {param_flag}\n')
             f.writelines(f'fi\n')
 
-            alias = alias +f'alias {commend}=\'{shell_name} {commend} \'\n'  '''
-        commend = config.get_cmd_name_all()
-        for i in range(len(commend)):
-            local = config.get_cmd_execute(commend[i])
-            if local == None:
-                break
-            file = ''
-            param = ''
-            flag = '$2'
-            if type(local) == list:
-                for a in range(len(local)):
-                    if local[a].find('{file}') != -1:
-                        file = '-f $FILE '
-                        flag = ''
-                    if local[a].find('{param}') != -1:
-                        param = f'-p {flag} $3 $4 $5 $6'
-            elif type(local) == str:    
-                if local.find('{file}') != -1:
-                    file = '-f $FILE '
-                    flag = ''
-                if local.find('{param}') != -1:
-                    param = f'-p {flag} $3 $4 $5 $6'
+            alias += f"alias {cmd}='{shell_name} {cmd} '\n"
+    print(alias)
 
-            f.writelines(f'if [ {commend[i]} = $1 ];then\n')
-            f.writelines(f'    python3 {run_name} -c {commend[i]} {file} {param} \n')    
-            f.writelines(f'fi\n')
-
-            alias = alias +f'alias {commend[i]}=\'{shell_name} {commend[i]} \'\n'
-    print(alias)  
 
 def usage():
-    #print ('***********************')
-
+    """
+    解析命令行参数。
+    """
     config = parseConfig()
     config.parse_cmd_config()
-    commend = config.get_cmd_name_all()
+    commands = config.get_cmd_name_all()
 
-    if sys.argv[len(sys.argv)-1] == '-p':
-        sys.argv.pop()
     parser = argparse.ArgumentParser(description='linux server to win')
-    parser.add_argument('-c','--commend',dest='commend', type=str,required=True,help=f'command must be the following:ServerInstall,{commend}')
-    parser.add_argument('-f', '--file',dest='file_path',type=str,help='file path')
-    parser.add_argument('-p', dest='param',type=str,nargs='+',help='param')
-    
-    
-    args = parser.parse_args()
-    #print(args.commend)
-    #print(args.file_path)
-    #print(args.param)
-    #print ('***********************')
-    return args
+    parser.add_argument('-c', '--commend', dest='commend', type=str, required=True,
+                        help=f'command must be one of: ServerInstall, {commands}')
+    parser.add_argument('-f', '--file', dest='file_path', type=str, help='file path')
+    parser.add_argument('-p', dest='param', type=str, nargs='+', help='param')
 
-def callback(client,topic,data):
+    return parser.parse_args()
+
+
+def callback(client, topic, data):
+    """
+    MQTT 回调函数，用于接收来自本地 (Windows) 客户端的响应。
+    """
     print(data)
     client.disconnect()
-    
 
-def send_commend(commend,data):
-    send_str = data
-    print("send string: "+commend)
+
+def send_commend(commend, data):
+    """
+    通过 MQTT 发送格式化后的命令到 Windows 客户端。
+    """
+    print(f"Sending command: {commend}")
     config = parseConfig()
     config.get_mqtt_config()
 
@@ -114,150 +91,170 @@ def send_commend(commend,data):
                           config.get_mqtt_keepalive_sec(),
                           config.get_mqtt_client_id(),
                           config.get_mqtt_topic(),
-                          send_str)
+                          data)
     if status != 0:
         print("send error")
         return
+
     rcv = mqtt_connect()
-    status = rcv.subscribe(config.get_mqtt_server(),
-                            config.get_mqtt_port(),
-                            config.get_mqtt_keepalive_sec(),
-                            config.get_mqtt_client_id(),
-                            config.get_mqtt_topic()+'local',
-                            callback)    
-    return
-
-
+    rcv.subscribe(config.get_mqtt_server(),
+                  config.get_mqtt_port(),
+                  config.get_mqtt_keepalive_sec(),
+                  config.get_mqtt_client_id(),
+                  config.get_mqtt_topic() + 'local',
+                  callback)
 
 
 def path_back_previous(path):
-    data = path
+    """
+    将路径分隔符规范化为正斜杠。
+    """
+    # 使用 normpath 解析路径中的 `..` 等相对符号，并确保统一使用正斜杠
+    norm = os.path.normpath(path)
+    return norm.replace('\\', '/')
 
-    tmp = path.split('/')
-    #print(tmp)
-    for i in range(tmp.count('..')):
-        index = tmp.index('..')
-        tmp.pop(index)
-        tmp.pop(index-1)
-    #print(tmp)
-    data = '/'.join(tmp) 
-    return data
 
 def server_path_to_local(path):
+    """
+    将 Linux 服务器路径映射到对应的 Windows 本地路径 (UNC 或盘符)。
+    """
     parse_config = parseConfig()
     parse_config.parse_server_config()
 
-    index = 0
-    data = path
-    while True:
-        server_path = parse_config.get_server_path(index)
-        local_path = parse_config.get_local_path(index)
-        #print(f"path = {data},server path = {server_path},local path = {local_path}")
-        if local_path == None or server_path == None:
-            break
-        index = index +1
-        if path.find(server_path) != -1:
-            data = path.replace(server_path,local_path)     
-            break 
-    return data
+    # 标准化输入路径以确保符合标准的 Linux 格式，便于后续匹配。
+    # 即使之前包含反斜杠，为了统一匹配逻辑，先全部转为正斜杠。
+    path_norm = path.replace('\\', '/')
 
-'''def execute_path_replace(path):
-    
-    #path = path_back_previous(path)
-    #将目录替换为目标目录
-    p = server_path_to_local(path)
-    return p '''   
-    
-    
-def format_execute(args,indata):
-    inparam = ''
-    if args.param != None:
-        inparam = " ".join(args.param)
-    file_path = args.file_path  
+    for i in range(parse_config.get_server_count()):
+        server_path = parse_config.get_server_path(i)
+        local_path = parse_config.get_local_path(i)
 
-    indata = indata.format(file = file_path,param = inparam)  
-    #print(f"indata:{indata}")
-    if os.getenv('OUT') != None:
-        indata = indata.replace("TARGET_OUT",os.getenv('OUT'))
-    
-    #处理路径中的返回上层符号
+        if not server_path or not local_path:
+            continue
+
+        # 标准化服务器路径以进行一致性匹配 (统一去除末尾斜杠)
+        server_path_norm = server_path.replace('\\', '/').rstrip('/')
+        local_path_clean = local_path.rstrip('\\').rstrip('/')
+
+        # 确定本地路径是否需要 Windows 风格 (盘符或 UNC)
+        is_win_target = ':' in local_path_clean or local_path_clean.startswith('//') or local_path_clean.startswith('\\\\')
+
+        # 使用循环查找所有匹配项并进行替换
+        # 注意：为了避免无限循环，我们在替换后继续搜索剩余部分
+        # 但由于我们修改了字符串，最好使用 while 循环重新查找
+
+        search_idx = 0
+        while True:
+            # 在当前路径字符串中查找服务器路径
+            # 必须匹配完整路径段的前缀 (例如 /home/user 匹配 /home/user/file，但不匹配 /home/username)
+            # 我们查找 server_path_norm，并检查它的下一个字符是否是 / 或 空格 或 结束
+
+            idx = path_norm.find(server_path_norm, search_idx)
+            if idx == -1:
+                break
+
+            # 验证匹配边界：
+            # 1. 前面必须是字符串开头或空格 (或者是 quote? 暂时假设空格分隔)
+            if idx > 0 and path_norm[idx-1] != ' ':
+                 search_idx = idx + 1
+                 continue
+
+            # 2. 后面必须是 '/' (子目录) 或 ' ' (路径结束) 或 字符串结束
+            end_of_match = idx + len(server_path_norm)
+            if end_of_match < len(path_norm):
+                char_after = path_norm[end_of_match]
+                if char_after not in ('/', ' '):
+                    search_idx = idx + 1
+                    continue
+
+            # 找到合法的路径前缀匹配！
+            # 现在我们需要找到这个完整路径 Token 的结束位置 (下一个空格或结束)
+            token_end = path_norm.find(' ', end_of_match)
+            if token_end == -1:
+                token_end = len(path_norm)
+
+            # 提取相对路径部分
+            # full_token: /home/quwj/work/file.txt
+            # server_path_norm: /home/quwj
+            # relative_part: /work/file.txt
+            full_token = path_norm[idx:token_end]
+            relative_part = full_token[len(server_path_norm):]
+
+            # 构建新的本地路径 Token
+            new_token = local_path_clean + relative_part
+
+            # 如果是 Windows 目标，只转换这个 Token 内部的分隔符
+            if is_win_target:
+                new_token = new_token.replace('/', '\\')
+
+            # 执行替换 (只替换当前找到的这个 Token)
+            path_norm = path_norm[:idx] + new_token + path_norm[token_end:]
+
+            # 更新搜索索引，继续查找下一个 (跳过刚刚替换的部分)
+            search_idx = idx + len(new_token)
+
+    return path_norm
+
+
+def format_execute(args, indata):
+    """
+    通过替换占位符为实际值并执行路径映射来格式化执行字符串。
+    """
+    inparam = " ".join(args.param) if args.param else ""
+    file_path = args.file_path if args.file_path else ""
+
+    # 解析 Linux 路径 (处理 ~, ., 以及相对路径)
+    if file_path:
+        file_path = os.path.expanduser(file_path)
+        file_path = os.path.abspath(file_path)
+
+    # 替换 {file} 和 {param} 占位符
+    indata = indata.format(file=file_path, param=inparam)
+
+    # 如果存在 'OUT' 环境变量，则进行替换处理
+    out_env = os.getenv('OUT')
+    if out_env:
+        indata = indata.replace("OUT", out_env)
+
     path = path_back_previous(indata)
-    #print(path)
-    if path.find('adb push') != -1 and len(inparam) == 0:
-            path = adbcommend.push(path)
 
-    #将目录替换为目标目录
-    path = server_path_to_local(path)
-    
-    #print(f"in param = {inparam}")
-    '''print(args.file_path)
-    #处理路径中的返回上层符号
-    file_path = path_back_previous(args.file_path)
-    #将目录替换为目标目录
-    file_path = server_path_to_local(file_path)
-    #格式化命令
-    indata = indata.replace("TARGET_OUT",os.getenv('OUT'))
-    data = indata.format(file = file_path,param = inparam)'''
+    # 特殊处理 'adb push' 命令，自动推断 Android 目标路径
+    if 'adb push' in path and not inparam:
+        path = adbcommend.push(path)
 
-    #print(data)
-    #data = execute_path_replace(cmd)
-    '''if path != None:
-        #给adb push 增加参数
-        if args.param == None and path.find('adb push') != -1:
-        #print("param:",data)  
-            path = adbcommend.push(path)'''
-    return path
+    mapped_path = server_path_to_local(path)
+    print(f"Executing Mapping: {path} -> {mapped_path}")
+    return mapped_path
 
-def commend_encode(commend_name,args):
+
+def commend_encode(commend_name, args):
+    """
+    将命令及其参数编码为 JSON 字符串以便通过 MQTT 传输。
+    """
     parse_config = parseConfig()
     parse_config.parse_cmd_config()
-    local = parse_config.get_cmd_execute(commend_name)
-    #print("local cmd = ",local)
-    if local == None:
-        print('commed is must:',parse_config.get_cmd_name_all())
+    execute = parse_config.get_cmd_execute(commend_name)
+
+    if execute is None:
+        print(f'Error: command "{commend_name}" not found in config.json')
         sys.exit(2)
 
-    #将要发送的数据拼装成json格式
     json_array = []
-    if str(type(local)).find("list") != -1:
-        count = 0
-        for l in local:
-            data = format_execute(args,l)
-            #d = dict()
-            #d[count] = data
-            json_array.append(data)
-            count = count + 1  
-    else:
-        data = format_execute(args,local)
-        #d = dict()
-        #d[0] = data
-        json_array.append(data)
+    execute_list = execute if isinstance(execute, list) else [execute]
+    for item in execute_list:
+        json_array.append(format_execute(args, item))
 
-    tmp_json = {"commend":commend_name}    
-    tmp_json["execute"] = json_array    
-    data_json=json.dumps(tmp_json,sort_keys=True,indent=4)
-    #print(data_json)
-    return data_json
+    return json.dumps({"commend": commend_name, "execute": json_array}, indent=4)
 
 
-
-def main(argv):
-    #test.main()
+def main():
     args = usage()
-    commend_name = args.commend
-    if commend_name == 'ServerInstall':
+    if args.commend == 'ServerInstall':
         server_install()
-        sys.exit(2)
+    else:
+        send_str = commend_encode(args.commend, args)
+        send_commend(args.commend, send_str)
 
-    send_str = commend_encode(commend_name,args)
-    #print(send_str)
-    send_commend(commend_name,send_str)
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
-
-
-
- 
-            
-            
+    main()

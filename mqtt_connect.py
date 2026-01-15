@@ -1,128 +1,109 @@
-
-#!/usr/bin/env python
-#coding:utf-8
-
 import time
-import json
-import random
-import sys
 from paho.mqtt import client as mqtt_client
-from threading import Event
+
 
 class mqtt_connect:
+    """
+    Paho MQTT 客户端的封装类，用于处理发布和订阅。
+    """
     def __init__(self):
-        return
-    
-    __server = 0
-    __port = 0
-    __keepalive = 0
-    __id = 0
-    __topic = 0
-    __callback = 0
-    __disconnect = 0
-    
-    __event = Event()  
-    __connect_status = 0  
-    def connect(self,server,port,keepalive,id):
-        def on_connect(client, userdata, flags, rc):
-            if rc == 0:#响应状态码为0表示连接成功
-                print("Connected to MQTT OK!")
-                self.__connect_status = 1
-                #self.__event.set()
-            else:
-                print("Failed to connect, return code %d\n", rc)
-        '''def on_disconnect(client, userdata, rc):
-            print("Disconnected111, trying to reconnect...")
-            while True:
-                try:
-                    client.reconnect()
-                    break
-                except Exception as e:
-                    print(f"Reconnection failed: {e}")
-                    time.sleep(5)  # 等待5秒后重试 '''  
-            #self.try_reconnect(client)
-        '''print(f"server:{server}")
-        print(f"port:{port}")
-        print(f"keepalive:{keepalive}")'''
-        client = mqtt_client.Client(id)
-        #client.on_connect = on_connect
-        #client.on_disconnect = on_disconnect
+        self.__server = None
+        self.__port = None
+        self.__keepalive = None
+        self.__id = None
+        self.__topic = None
+        self.__callback = None
+        self.__connect_status = 0
+        self.__is_disconnected = False
+
+    def connect(self, server, port, keepalive, client_id):
+        """
+        建立 MQTT 客户端配置 (连接在循环中进行)。
+        """
+        client = mqtt_client.Client(client_id)
         client.connect(server, port, keepalive)
         return client
 
-    def publish(self,server,port,keepalive,id,topic,param):
-        if len(param) == 0:
-            return
-        def on_connect(client, userdata, flags, rc):
-            if rc == 0:#响应状态码为0表示连接成功
-                #print("Connected to MQTT OK!")
-                self.__connect_status = 1
-                #self.__event.set()
-            else:
-                print("Failed to connect, return code %d\n", rc)    
-        client = self.connect(server,port,keepalive,id)
-        client.on_connect = on_connect
-        #client.loop_start()
-        client.loop(1)
-        #self.__event.wait(5)
-        #self.__event.clear()
-        if self.__connect_status == 0:
-            print("mqtt connect error!")  
+    def publish(self, server, port, keepalive, client_id, topic, param):
+        """
+        向指定主题发布消息。
+        - 连接到代理
+        - 发布消息
+        - 断开连接
+        """
+        if not param:
             return -1
 
-        result = client.publish(topic,param, qos=0, retain=False)
-        status = result[0]
-        if status != 0:
-            print(f"Failed to send message to topic {topic}")
-        #print(f"Send `{param}` to topic `{topic}`")
-            
-           
-        #client.loop_stop()      
-        client.disconnect()
-        return 0
+        self.__connect_status = 0
 
-    def subscribe(self,server,port,keepalive,id,topic,callback):
-        def on_message(client, userdata, msg):
-            #print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-            callback(client,topic,msg.payload.decode())
         def on_connect(client, userdata, flags, rc):
-            if rc == 0:#响应状态码为0表示连接成功
-                print("Connected to MQTT OK! subscribe")
+            if rc == 0:
                 self.__connect_status = 1
-                #self.__event.set()
-                if self.__disconnect == 1:
-                    self.__disconnect = 0
-                    self.subscribe(self.__server,self.__port,self.__keepalive,self.__id,self.__topic,self.__callback)
             else:
-                print("Failed to connect, return code %d\n", rc)    
+                print(f"Failed to connect for publish, return code {rc}")
+
+        client = self.connect(server, port, keepalive, client_id)
+        client.on_connect = on_connect
+        client.loop(1)  # 短暂处理网络事件以捕获 on_connect 回调
+
+        if self.__connect_status == 0:
+            # 如果初始循环未捕获，则再尝试一次
+            time.sleep(0.1)
+            client.loop(0.1)
+
+        result = client.publish(topic, param, qos=0, retain=False)
+        if result[0] != 0:
+            print(f"Failed to send message to topic {topic}")
+
+        client.disconnect()
+        return result[0]
+
+    def subscribe(self, server, port, keepalive, client_id, topic, callback):
+        """
+        订阅主题并无限期监听消息。
+        - 处理自动重连
+        - 收到消息时调用回调
+        """
+        def on_message(client, userdata, msg):
+            callback(client, topic, msg.payload.decode())
+
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                print(f"Connected to MQTT OK! Subscribed to {topic}")
+                self.__connect_status = 1
+                if self.__is_disconnected:
+                    self.__is_disconnected = False
+                    client.subscribe(topic)
+            else:
+                print(f"Failed to connect for subscribe, return code {rc}")
+
         def on_disconnect(client, userdata, rc):
             print("Disconnected, trying to reconnect...")
+            self.__is_disconnected = True
             while True:
                 try:
                     client.reconnect()
-                    self.__disconnect = 1
                     break
                 except Exception as e:
                     print(f"Reconnection failed: {e}")
-                    time.sleep(5)  # 等待5秒后重试 '''     
-        
+                    time.sleep(5)
+
         self.__server = server
         self.__port = port
         self.__keepalive = keepalive
-        self.__id = id
+        self.__id = client_id
         self.__topic = topic
         self.__callback = callback
-    
-    
-        client = self.connect(server,port,keepalive,id)
-        #client.loop_start()
-        client.subscribe(topic)
+
+        client = self.connect(server, port, keepalive, client_id)
         client.on_message = on_message
         client.on_connect = on_connect
         client.on_disconnect = on_disconnect
+
+        client.subscribe(topic)
         client.loop_forever()
-        client.disconnect() 
-        print("Connected to MQTT OK!over")
-         
+        client.disconnect()
+
+
 
 

@@ -1,38 +1,38 @@
 #!/bin/bash
-FILE=$(pwd)/$2
-if [ d = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c d -f $FILE
+FILE=$2
+if [ "$1" = "d" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c d -f "$FILE"  
 fi
-if [ f = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c f -f $FILE
+if [ "$1" = "f" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c f -f "$FILE"  
 fi
-if [ vs = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c vs -f $FILE
+if [ "$1" = "vs" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c vs -f "$FILE"  
 fi
-if [ services = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c services
+if [ "$1" = "trae" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c trae -f "$FILE"  
 fi
-if [ services11 = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c services11
+if [ "$1" = "antigravity" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c antigravity -f "$FILE"  
 fi
-if [ selinux = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c selinux
+if [ "$1" = "services" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c services  
 fi
-if [ selinux11 = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c selinux11
+if [ "$1" = "services11" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c services11  
 fi
-if [ apush = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c apush -f $FILE  -p  $3 $4 $5 $6
+if [ "$1" = "selinux" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c selinux  
 fi
-if [ areboot = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c areboot
+if [ "$1" = "selinux11" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c selinux11  
 fi
-if [ adb = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c adb  -p $2 $3 $4 $5 $6
+if [ "$1" = "apush" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c apush -f "$FILE"  -p  "$3" "$4" "$5" "$6"
 fi
-if [ trae = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c trae -f $FILE
+if [ "$1" = "areboot" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c areboot  
 fi
-if [ antigravity = $1 ];then
-    python3 /home/quwj/work/worktools/fastopen/server.py -c antigravity -f $FILE
+if [ "$1" = "adb" ]; then
+    python3 /home/quwj/work/worktools/fastopen/server.py -c adb  -p $2 "$3" "$4" "$5" "$6"
 fi

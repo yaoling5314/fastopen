@@ -1,122 +1,160 @@
 # FastOpen
 
-## 项目简介
-FastOpen 是一个提升跨平台开发效率的工具。当你通过终端（SSH）连接到 Linux 服务器进行开发时，如果在服务器终端中想要查看代码或打开文件夹，通常需要手动在 Windows 上找到对应的映射盘符路径并打开。
+**FastOpen** 是一个高效的跨平台开发辅助工具，旨在打通 Linux 服务器与 Windows 本地开发环境的边界。
 
-FastOpen 允许你直接在 Linux 终端输入命令（如 `vs main.py`），通过 MQTT 通信自动触发 Windows 端执行对应的操作（如用 VS Code 打开该文件），省去了手动查找路径的繁琐过程。
-
-## 工作原理
-1.  **Server 端 (Linux)**: 用户输入快捷指令 -> 解析路径 -> 发送 MQTT 消息。
-2.  **Client 端 (Windows)**: 监听 MQTT 消息 -> 接收指令 -> 将 Linux 路径映射为 Windows 本地路径 (如 Samba/SMB 映射) -> 调用 Windows 程序打开。
-
-## 目录结构
-- `server.py`: Linux 端主程序，负责安装别名和发送指令。
-- `local.py`: Windows 端监听程序，负责执行指令。
-- `config.json`: 配置文件，定义 MQTT 代理、路径映射和命令行为。
-- `alias.bashrc`: 预设别名文件，可直接 source 使用。
+它允许你在 Linux 终端（SSH）中直接输入命令，自动触发 Windows 端的操作。例如：在 Linux 终端输入 `vs main.py`，即可唤起 Windows 上的 VS Code 打开该文件，或者输入 `d .` 在 Windows 资源管理器中打开当前 Linux 目录。
 
 ---
 
-## 详细使用步骤
+## 🏗️ 项目架构
 
-### 1. 环境准备
-- **Linux 服务器**: Python 3
-- **Windows 本地**: Python 3
-- **文件共享**: 确保 Linux 目录已通过 Samba/SMB 映射到 Windows 本地驱动器 (例如 Linux 的 `/home/user/work` 映射为 Windows 的 `Z:\work`)。
+FastOpen 采用 **客户端-服务器 (C/S)** 架构，通过 **MQTT 协议** 进行解耦通信，实现 Linux 与 Windows 的跨平台互操作。
 
-### 2. 配置文件 (config.json)
-无需分开配置，两端通常保持一致（或通过 Git 同步）。打开 `config.json` 进行修改：
+```mermaid
+graph LR
+    User[用户 (Linux Terminal)] -->|1. 输入命令 (vs/d)| Alias[Shell Alias (open.sh)]
+    Alias -->|2. 调用| Server[Server.py (Linux)]
+    Server -->|3. 路径映射 & 编码| MQTT_Pub[发布消息]
+    MQTT_Pub -.->|4. MQTT Topic| Broker((MQTT Broker))
+    Broker -.->|5. 订阅消息| MQTT_Sub[Local.py (Windows)]
+    MQTT_Sub -->|6. 解析 & 执行| Windows[Windows System/Apps]
+```
 
+1.  **Server 端 (Linux)**: 接收用户指令，根据 `config.json` 将 Linux 路径转换为 Windows 路径（支持 UNC 或盘符），打包成 JSON 消息发送到 MQTT。
+2.  **MQTT Broker**: 作为消息中转站（需确保两端均可访问）。
+3.  **Local 端 (Windows)**: 持续监听 MQTT 消息，解析指令并调用 Windows API 或 CMD 执行操作（如打开 VS Code、资源管理器）。
+
+---
+
+## 🔥 主要功能
+
+- **无缝打开文件/目录**：在 Linux 终端操作，Windows 端实时响应。
+- **智能路径映射**：
+    - 支持 **网络路径 (UNC)**：`\\IP\path`（零配置，自动推导）。
+    - 支持 **磁盘映射 (Drive)**：`Z:\path`（支持手动挂载的盘符）。
+    - 自动处理 Linux (`/`) 与 Windows (`\`) 的路径分隔符转换。
+- **命令转发**：支持自定义命令，如用 VS Code 打开 (`code`)、资源管理器打开 (`start`) 等。
+- **ADB 指令增强**：智能识别 `adb push` 目标路径（自动推断 Android 分区结构）。
+- **极简配置**：默认情况下只需配置 IP，即可开箱即用。
+
+---
+
+## 🛠️ 安装与配置
+
+### 1. 准备工作
+- **Linux 端**：Python 3
+- **Windows 端**：Python 3
+- **文件共享**：确保 Windows 能通过网络访问 Linux 文件（如 Samba 共享）。
+
+### 2. 配置文件 (`config.json`)
+请在项目根目录修改 `config.json`。支持两种配置模式：
+
+#### 模式 A：自动检测 (推荐 - 最小配置)
+无需手动映射盘符，系统会将 Linux 路径转换为 Windows UNC 网络路径 (`\\IP\User\...`)。
 ```json
 {
     "MQTT config": {
-        "Server": "10.17.100.241",    // MQTT Broker IP
-        "Port": "1883",               // MQTT Broker 端口
+        "Server": "10.17.100.247",
+        "Port": "1883",
         "KeepAliveSeconed": "10",
-        "Topic": "fastopen"           // 通信 Topic，确保唯一避免冲突
+        "Topic": "fastopen"
     },
-    // 路径映射配置：将服务器路径转换为本地路径
     "server config": [
         {
-            "IP": "",
-            "server": "/home/quwj/",  // Linux 服务器上的绝对路径前缀
-            "local": "Z:/"            // Windows 上对应的挂载盘符或路径
+            "IP": "10.17.100.247",
+            "server": "",
+            "local": ""
         }
     ],
-    // 命令定义
     "command": [
         {
-            "name": "vs",             // 在 Linux 终端输入的命令别名
-            "execute": "code {file}"  // Windows 上执行的命令 ({file} 会被自动替换为本地路径)
+            "name": "vs",
+            "execute": "code {file}"
         },
         {
             "name": "d",
-            "execute": "start {file}" // 打开文件夹
+            "execute": "start {file}"
         }
     ]
 }
 ```
 
-### 3. 服务器端操作 (Linux)
-在 Linux 服务器上执行以下步骤以注册快捷指令。有两种方法：
+#### 模式 B：手动挂载 (盘符映射)
+如果你将 Linux 目录挂载为了 Windows 盘符 (如 `Z:` 对应 `/home/quwj/`)：
+```json
+{
+    "server config": [
+        {
+            "IP": "",
+            "server": "/home/quwj/",
+            "local": "Z:/"
+        }
+    ]
+}
+```
 
-**方法一：使用 alias.bashrc (推荐)**
-1.  **编辑 alias.bashrc**:
-    打开 `alias.bashrc`，确保里面的路径指向正确的 `open.sh` 位置。例如：
-    ```bash
-    alias vs='/path/to/fastopen/open.sh vs '
-    alias d='/path/to/fastopen/open.sh d '
-    ```
-2.  **生效配置**:
-    在你的 `~/.bashrc` 或 `~/.zshrc` 中添加以下内容，以便每次登录自动生效：
-    ```bash
-    source /path/to/fastopen/alias.bashrc
-    ```
-    或者直接在当前终端执行：
-    ```bash
-    source alias.bashrc
-    ```
-    `alias.bashrc` 中还可以包含其他常用的便捷别名。
+---
 
-**方法二：自动生成 open.sh**
-1.  **生成执行脚本**:
-    执行安装模式，这会根据 `config.json` 中的 `command` 自动覆写 `open.sh` 脚本并输出建议的 alias 命令。
-    ```bash
-    python3 server.py -c ServerInstall
-    ```
-2.  **生效配置**:
-    将输出的 alias 命令复制到你的 shell 配置文件中，或者直接 source 生成的脚本。
+### 3. 服务端部署 (Linux)
 
-### 4. Windows 终端操作 (Windows)
-在 Windows 电脑上启动监听服务：
+**步骤 1：生成执行脚本**
+在 Linux 终端运行以下命令，根据配置自动生成 `open.sh`：
+```bash
+python3 server.py -c ServerInstall
+```
 
-1.  **进入项目目录**:
-    打开 CMD 或 PowerShell，进入 fastopen 目录。
-2.  **启动监听**:
-    ```cmd
-    python local.py
-    ```
-    *注意*: 该窗口需要保持开启，建议将其加入开机自启或使用后台运行工具。
+**步骤 2：配置 Alias**
+为了方便使用，将别名添加到你的 shell 配置文件 (`~/.bashrc` 或 `~/.zshrc`)。
 
-### 5. 开始使用
-一切就绪后，尝试以下流程：
+方法一 (推荐)：直接配置到的 `alias.bashrc`
+```bash
+source /path/to/fastopen/alias.bashrc
+```
 
-1.  在 **Linux 终端** 中，进入任意目录，输入：
-    ```bash
-    vs server.py
-    ```
-2.  观察 **Windows**:
-    如果配置正确，VS Code 将会自动弹起并打开该文件。
+方法二：手动添加 Alias
+```bash
+alias vs='/path/to/fastopen/open.sh vs '
+alias d='/path/to/fastopen/open.sh d '
+```
+*别忘了执行 `source ~/.bashrc` 使配置生效。*
 
-3.  常用预设命令 (需在 config.json 中定义并配置 alias):
-    - `d .`: 在 Windows 资源管理器中打开当前目录。
-    - `vs file`: 用 VS Code 打开文件。
+---
 
-## 常见问题
-- **路径打不开？**
-  检查 `config.json` 中的 `server` 和 `local` 映射是否完全匹配。
-- **没反应？**
-  检查 `MQTT config` 中的 Server IP 是否两端都能访问。
+### 4. 客户端部署 (Windows)
 
-## TODO
-- [ ] 逻辑重构优化
+在 Windows 上运行监听程序，保持窗口开启：
+```cmd
+cd path/to/fastopen
+python local.py
+```
+*建议将其加入开机自启或使用后台工具运行。*
+
+---
+
+## 🚀 使用指南
+
+| 命令 | 示例 | 作用 |
+| :--- | :--- | :--- |
+| **vs** | `vs main.py` | 用 VS Code 打开当前文件 |
+| | `vs .` | 用 VS Code 打开当前项目目录 |
+| | `vs ~/config` | 打开 Home 目录下的文件 |
+| **d** | `d .` | 在 Windows 资源管理器中打开当前目录 |
+| **adb**| `adb push file` | (特殊) 自动推断 Android 目标路径并 Push |
+
+---
+
+## ❓ 常见问题
+
+**Q1: 执行 `vs .` 打开的路径不对？**
+- 检查 `config.json` 中的 `IP` 是否填写正确。
+- 如果使用了盘符映射，请确保 `config.json` 中的 `server` 和 `local` 路径完全对应且以 `/` 结尾。
+
+**Q2: 没有任何反应？**
+- 检查 `config.json` 中的 MQTT Broker IP 是否正确。
+- 确保 Windows 端的 `local.py` 正在运行且已连接 MQTT (`Connected to MQTT OK`).
+- 确保 Linux 和 Windows 能 ping 通 MQTT 服务器。
+
+**Q3: 路径包含中文或空格？**
+- FastOpen 已做处理，但建议路径尽量避免特殊字符。
+
+---
