@@ -11,13 +11,13 @@
 FastOpen 采用 **客户端-服务器 (C/S)** 架构，通过 **MQTT 协议** 进行解耦通信，实现 Linux 与 Windows 的跨平台互操作。
 
 ```mermaid
-graph LR
-    User[用户 (Linux Terminal)] -->|1. 输入命令 (vs/d)| Alias[Shell Alias (open.sh)]
-    Alias -->|2. 调用| Server[Server.py (Linux)]
-    Server -->|3. 路径映射 & 编码| MQTT_Pub[发布消息]
-    MQTT_Pub -.->|4. MQTT Topic| Broker((MQTT Broker))
-    Broker -.->|5. 订阅消息| MQTT_Sub[Local.py (Windows)]
-    MQTT_Sub -->|6. 解析 & 执行| Windows[Windows System/Apps]
+flowchart LR
+    User["用户 (Linux Terminal)"] -->|"1. 输入命令 (vs/d)"| Alias["Shell Alias (open.sh)"]
+    Alias -->|"2. 调用"| Server["Server.py (Linux)"]
+    Server -->|"3. 路径映射 & 编码"| MQTT_Pub["发布消息"]
+    MQTT_Pub -.->|"4. MQTT Topic"| Broker(("MQTT Broker"))
+    Broker -.->|"5. 订阅消息"| MQTT_Sub["Local.py (Windows)"]
+    MQTT_Sub -->|"6. 解析 & 执行"| Windows["Windows System/Apps"]
 ```
 
 1.  **Server 端 (Linux)**: 接收用户指令，根据 `config.json` 将 Linux 路径转换为 Windows 路径（支持 UNC 或盘符），打包成 JSON 消息发送到 MQTT。
